@@ -108,15 +108,15 @@ func (c *PolicyShowCommand) addPolicyEvaluationDetails(eval *cloud.PolicyEvaluat
 
 	// Human-readable output (when not in JSON mode)
 	if !c.json {
-		c.writer.Output("\n📊 Policy Evaluation Summary")
+		c.writer.Output("\nPolicy Evaluation Summary")
 		c.writer.Output(fmt.Sprintf("   Total Policies: %d", eval.TotalCount))
-		c.writer.Output(fmt.Sprintf("   ✅ Passed: %d", eval.PassedCount))
-		c.writer.Output(fmt.Sprintf("   ⚠️  Failed (Advisory): %d", eval.AdvisoryFailedCount))
-		c.writer.Output(fmt.Sprintf("   🚫 Failed (Mandatory): %d", eval.MandatoryFailedCount))
-		c.writer.Output(fmt.Sprintf("   ❌ Errored: %d", eval.ErroredCount))
+		c.writer.Output(fmt.Sprintf("   Passed: %d", eval.PassedCount))
+		c.writer.Output(fmt.Sprintf("   Failed (Advisory): %d", eval.AdvisoryFailedCount))
+		c.writer.Output(fmt.Sprintf("   Failed (Mandatory): %d", eval.MandatoryFailedCount))
+		c.writer.Output(fmt.Sprintf("   Errored: %d", eval.ErroredCount))
 
 		if eval.MandatoryFailedCount > 0 {
-			c.writer.Output("\n🚫 Failed Mandatory Policies:")
+			c.writer.Output("\nFailed Mandatory Policies:")
 			for _, policy := range eval.FailedPolicies {
 				if policy.EnforcementLevel == "mandatory" {
 					// Display actual policy name with optional description
@@ -130,7 +130,7 @@ func (c *PolicyShowCommand) addPolicyEvaluationDetails(eval *cloud.PolicyEvaluat
 		}
 
 		if eval.AdvisoryFailedCount > 0 {
-			c.writer.Output("\n⚠️  Failed Advisory Policies:")
+			c.writer.Output("\nFailed Advisory Policies:")
 			for _, policy := range eval.FailedPolicies {
 				if policy.EnforcementLevel == "advisory" {
 					// Display actual policy name with optional description
@@ -144,9 +144,9 @@ func (c *PolicyShowCommand) addPolicyEvaluationDetails(eval *cloud.PolicyEvaluat
 		}
 
 		if eval.RequiresOverride {
-			c.writer.Output("\nℹ️  Override Required: Policy override needed to proceed")
+			c.writer.Output("\nOverride Required: Policy override needed to proceed")
 		} else {
-			c.writer.Output("\n✅ All policies passed or only advisory policies failed")
+			c.writer.Output("\nAll policies passed or only advisory policies failed")
 		}
 
 		// Add run link

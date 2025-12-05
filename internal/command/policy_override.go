@@ -100,17 +100,17 @@ func (c *PolicyOverrideCommand) addPolicyOverrideDetails(override *cloud.PolicyO
 
 	// Human-readable output (when not in JSON mode)
 	if !c.json {
-		c.writer.Output("\n🛡️  Applying policy override...")
+		c.writer.Output("\nApplying policy override...")
 		c.writer.Output(fmt.Sprintf("Justification: %s", override.Justification))
 		c.writer.Output("")
 
-		c.writer.Output("✅ Policy override applied successfully")
-		c.writer.Output("📝 Justification comment added to run")
+		c.writer.Output("Policy override applied successfully")
+		c.writer.Output("Justification comment added to run")
 
 		if override.OverrideComplete {
-			c.writer.Output(fmt.Sprintf("✅ Override complete! Run status: %s", override.FinalStatus))
+			c.writer.Output(fmt.Sprintf("Override complete! Run status: %s", override.FinalStatus))
 		} else {
-			c.writer.Output(fmt.Sprintf("⏳ Override processing... Run status: %s", override.FinalStatus))
+			c.writer.Output(fmt.Sprintf("Override processing... Run status: %s", override.FinalStatus))
 		}
 
 		c.writer.Output("\nNext Steps:")
