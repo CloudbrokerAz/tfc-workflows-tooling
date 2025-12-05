@@ -75,6 +75,16 @@ func (c *PolicyShowCommand) addPolicyEvaluationDetails(eval *cloud.PolicyEvaluat
 	c.addOutput("requires_override", fmt.Sprintf("%t", eval.RequiresOverride))
 	c.addOutput("policy_status", eval.Status)
 
+	// Add full API response as JSON
+	if eval.RawAPIResponse != nil {
+		policyDetailsJSON, err := json.Marshal(eval.RawAPIResponse)
+		if err != nil {
+			log.Printf("[ERROR] Failed to marshal policy details: %s", err)
+		} else {
+			c.addOutput("policy_details", string(policyDetailsJSON))
+		}
+	}
+
 	// Add failed policies if any
 	if len(eval.FailedPolicies) > 0 {
 		failedPoliciesJSON, err := json.Marshal(eval.FailedPolicies)

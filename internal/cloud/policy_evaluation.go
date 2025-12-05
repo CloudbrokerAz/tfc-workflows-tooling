@@ -197,9 +197,10 @@ func (s *policyService) getPolicyFromTaskStages(ctx context.Context, run *tfe.Ru
 	}
 
 	result := &PolicyEvaluation{
-		RunID:         run.ID,
-		PolicyStageID: policyStageDetail.ID,
-		Status:        string(policyStageDetail.Status),
+		RunID:          run.ID,
+		PolicyStageID:  policyStageDetail.ID,
+		Status:         string(policyStageDetail.Status),
+		RawAPIResponse: policyStageDetail,
 	}
 
 	// Aggregate counts from policy evaluations
@@ -235,9 +236,10 @@ func (s *policyService) getPolicyFromTaskStages(ctx context.Context, run *tfe.Ru
 // getPolicyFromPolicyCheck extracts policy evaluation from legacy API
 func (s *policyService) getPolicyFromPolicyCheck(ctx context.Context, run *tfe.Run, check *tfe.PolicyCheck) *PolicyEvaluation {
 	result := &PolicyEvaluation{
-		RunID:         run.ID,
-		PolicyCheckID: check.ID,
-		Status:        string(check.Status),
+		RunID:          run.ID,
+		PolicyCheckID:  check.ID,
+		Status:         string(check.Status),
+		RawAPIResponse: check,
 	}
 
 	// Use Result counts from PolicyCheck

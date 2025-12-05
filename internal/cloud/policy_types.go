@@ -51,6 +51,8 @@ type PolicyEvaluation struct {
 	FailedPolicies       []PolicyDetail `json:"failed_policies"`
 	Status               string         `json:"status"`
 	RequiresOverride     bool           `json:"requires_override"`
+	// RawAPIResponse contains the full API response from TFC (TaskStage or PolicyCheck)
+	RawAPIResponse any `json:"raw_api_response,omitempty"`
 }
 
 // Validate checks PolicyEvaluation data integrity
