@@ -29,6 +29,7 @@ type Cloud struct {
 	RunService
 	PlanService
 	WorkspaceService
+	PolicyService
 }
 
 func (c *Cloud) UseJson(json bool) {
@@ -53,5 +54,6 @@ func NewCloud(c *tfe.Client, w Writer) *Cloud {
 		RunService:           NewRunService(meta),
 		PlanService:          NewPlanService(meta),
 		WorkspaceService:     NewWorkspaceService(meta),
+		PolicyService:        NewPolicyService(meta),
 	}
 }
