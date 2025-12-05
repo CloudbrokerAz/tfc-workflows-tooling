@@ -40,7 +40,7 @@ func (s *policyService) OverridePolicy(ctx context.Context, options OverridePoli
 	taskStages, err := s.tfe.TaskStages.List(ctx, run.ID, &tfe.TaskStageListOptions{})
 	if err == nil && taskStages != nil && len(taskStages.Items) > 0 {
 		log.Printf("[DEBUG] Using modern API (task-stages) for policy override")
-		return s.overrideViaTaskStage(ctx, run, result)
+		return s.overrideViaTaskStage(ctx, run, result, taskStages)
 	}
 
 	// Fall back to legacy API
@@ -48,7 +48,7 @@ func (s *policyService) OverridePolicy(ctx context.Context, options OverridePoli
 
 	// Read run again to get policy checks relationship
 	run, err = s.tfe.Runs.ReadWithOptions(ctx, options.RunID, &tfe.RunReadOptions{
-		Include: []tfe.RunIncludeOpt{"policy_checks"},
+		Include: []tfe.RunIncludeOpt{RunPolicyChecks},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error reading run for policy checks: %w", err)
@@ -78,13 +78,7 @@ func (s *policyService) validateOverrideEligibility(ctx context.Context, runID s
 }
 
 // overrideViaTaskStage applies override using modern API
-func (s *policyService) overrideViaTaskStage(ctx context.Context, run *tfe.Run, result *PolicyOverride) (*PolicyOverride, error) {
-	// Find the policy evaluation task stage
-	taskStages, err := s.tfe.TaskStages.List(ctx, run.ID, &tfe.TaskStageListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("error listing task stages: %w", err)
-	}
-
+func (s *policyService) overrideViaTaskStage(ctx context.Context, run *tfe.Run, result *PolicyOverride, taskStages *tfe.TaskStageList) (*PolicyOverride, error) {
 	var policyStage *tfe.TaskStage
 	for _, stage := range taskStages.Items {
 		if stage.Stage == tfe.PrePlan || stage.Stage == tfe.PostPlan {
@@ -130,6 +124,11 @@ func (s *policyService) overrideViaTaskStage(ctx context.Context, run *tfe.Run, 
 
 // overrideViaPolicyCheck applies override using legacy API
 func (s *policyService) overrideViaPolicyCheck(ctx context.Context, run *tfe.Run, result *PolicyOverride) (*PolicyOverride, error) {
+	// Guard against empty policy checks
+	if len(run.PolicyChecks) == 0 {
+		return nil, ErrNoPolicyCheck
+	}
+
 	// Use the first policy check
 	policyCheck := run.PolicyChecks[0]
 	result.PolicyCheckID = policyCheck.ID

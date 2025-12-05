@@ -5,6 +5,7 @@ package cloud
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -12,6 +13,10 @@ import (
 	"github.com/hashicorp/go-tfe"
 	"github.com/sethvargo/go-retry"
 )
+
+// RunPolicyChecks is the include option for policy checks relationship.
+// Note: This is not defined in go-tfe SDK as of v1.95.0
+const RunPolicyChecks tfe.RunIncludeOpt = "policy_checks"
 
 const (
 	PolicyWaitMaxDuration    = 30 * time.Minute
@@ -69,7 +74,15 @@ func (s *policyService) GetPolicyEvaluation(ctx context.Context, options GetPoli
 	taskStages, err := s.tfe.TaskStages.List(ctx, run.ID, &tfe.TaskStageListOptions{})
 	if err == nil && taskStages != nil && len(taskStages.Items) > 0 {
 		log.Printf("[DEBUG] Using modern API (task-stages) for policy evaluation")
-		return s.getPolicyFromTaskStages(ctx, run, taskStages)
+		result, err := s.getPolicyFromTaskStages(ctx, run, taskStages)
+		if err == nil {
+			return result, nil
+		}
+		// If no policy stage found in task stages, fall back to legacy API
+		if !errors.Is(err, ErrNoPolicyCheck) {
+			return nil, err
+		}
+		log.Printf("[DEBUG] No policy stage in task stages, trying legacy API")
 	}
 
 	// Fall back to legacy API (policy-checks)
@@ -77,7 +90,7 @@ func (s *policyService) GetPolicyEvaluation(ctx context.Context, options GetPoli
 
 	// Read the run again to get policy checks relationship
 	run, err = s.tfe.Runs.ReadWithOptions(ctx, options.RunID, &tfe.RunReadOptions{
-		Include: []tfe.RunIncludeOpt{"policy_checks"},
+		Include: []tfe.RunIncludeOpt{RunPolicyChecks},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error reading run for policy checks: %w", err)
@@ -143,7 +156,9 @@ func (s *policyService) isPolicyEvaluationComplete(run *tfe.Run) bool {
 	case PostPlanAwaitingDecision, // Policies evaluated, awaiting decision
 		tfe.RunPolicyOverride,     // Override applied
 		tfe.RunPostPlanCompleted,  // Policies passed
-		tfe.RunPlannedAndFinished: // Plan-only mode, policies evaluated
+		tfe.RunPlannedAndFinished, // Plan-only mode, policies evaluated
+		tfe.RunPolicyChecked,      // Policies checked (confirmable run)
+		tfe.RunPolicySoftFailed:   // Policies with advisory failures
 		return true
 	}
 	return false
@@ -200,8 +215,8 @@ func (s *policyService) getPolicyFromTaskStages(ctx context.Context, run *tfe.Ru
 		if policyEval.ResultCount != nil && policyEval.ResultCount.MandatoryFailed > 0 {
 			result.FailedPolicies = append(result.FailedPolicies, PolicyDetail{
 				PolicyName:       fmt.Sprintf("policy-eval-%s", policyEval.ID),
-				EnforcementLevel: "mandatory",
-				Status:           "failed",
+				EnforcementLevel: EnforcementMandatory,
+				Status:           PolicyStatusFailed,
 				Description:      fmt.Sprintf("%d mandatory policies failed", policyEval.ResultCount.MandatoryFailed),
 			})
 		}
@@ -230,15 +245,19 @@ func (s *policyService) getPolicyFromPolicyCheck(ctx context.Context, run *tfe.R
 		result.PassedCount = check.Result.Passed
 		result.AdvisoryFailedCount = check.Result.SoftFailed + check.Result.AdvisoryFailed
 		result.MandatoryFailedCount = check.Result.HardFailed
-		result.TotalCount = result.PassedCount + result.AdvisoryFailedCount + result.MandatoryFailedCount
+		// Legacy API doesn't have explicit errored count; check status instead
+		if check.Status == tfe.PolicyErrored {
+			result.ErroredCount = 1
+		}
+		result.TotalCount = result.PassedCount + result.AdvisoryFailedCount + result.MandatoryFailedCount + result.ErroredCount
 		result.RequiresOverride = result.MandatoryFailedCount > 0
 
 		// Add generic failed policy entry if mandatory failures exist
 		if result.MandatoryFailedCount > 0 {
 			result.FailedPolicies = append(result.FailedPolicies, PolicyDetail{
 				PolicyName:       fmt.Sprintf("policy-check-%s", check.ID),
-				EnforcementLevel: "mandatory",
-				Status:           "failed",
+				EnforcementLevel: EnforcementMandatory,
+				Status:           PolicyStatusFailed,
 				Description:      fmt.Sprintf("%d mandatory policies failed", result.MandatoryFailedCount),
 			})
 		}

@@ -9,6 +9,35 @@ import (
 	"time"
 )
 
+// Pre-compiled regex for TFC resource ID validation
+var validIDPattern = regexp.MustCompile(`^[a-z]+-[a-zA-Z0-9]+$`)
+
+// Enforcement levels for policies
+const (
+	EnforcementMandatory = "mandatory"
+	EnforcementAdvisory  = "advisory"
+)
+
+// Policy statuses
+const (
+	PolicyStatusFailed  = "failed"
+	PolicyStatusErrored = "errored"
+	PolicyStatusPassed  = "passed"
+)
+
+// Run statuses for policy operations
+const (
+	RunStatusPostPlanAwaitingDecision = "post_plan_awaiting_decision"
+	RunStatusPolicyOverride           = "policy_override"
+	RunStatusPostPlanCompleted        = "post_plan_completed"
+	RunStatusApplyQueued              = "apply_queued"
+	RunStatusDiscarded                = "discarded"
+	RunStatusErrored                  = "errored"
+)
+
+// MinJustificationLength is the minimum required length for override justification
+const MinJustificationLength = 10
+
 // PolicyEvaluation represents normalized policy evaluation results
 type PolicyEvaluation struct {
 	RunID                string         `json:"run_id"`
@@ -27,29 +56,37 @@ type PolicyEvaluation struct {
 // Validate checks PolicyEvaluation data integrity
 func (pe *PolicyEvaluation) Validate() error {
 	if !validStringID(pe.RunID) {
-		return fmt.Errorf("invalid run ID: %s", pe.RunID)
+		return ErrInvalidRunID
 	}
 
 	if pe.PolicyStageID == "" && pe.PolicyCheckID == "" {
-		return fmt.Errorf("either PolicyStageID or PolicyCheckID must be set")
+		return ErrPolicyIDRequired
 	}
 
 	if pe.PolicyStageID != "" && pe.PolicyCheckID != "" {
-		return fmt.Errorf("PolicyStageID and PolicyCheckID are mutually exclusive")
+		return ErrPolicyIDMutualExclusive
+	}
+
+	if pe.PolicyStageID != "" && !validStringID(pe.PolicyStageID) {
+		return ErrInvalidPolicyStageID
+	}
+
+	if pe.PolicyCheckID != "" && !validStringID(pe.PolicyCheckID) {
+		return ErrInvalidPolicyCheckID
 	}
 
 	if pe.TotalCount < 0 || pe.PassedCount < 0 || pe.AdvisoryFailedCount < 0 ||
 		pe.MandatoryFailedCount < 0 || pe.ErroredCount < 0 {
-		return fmt.Errorf("counts must be non-negative")
+		return ErrNegativeCount
 	}
 
 	expectedTotal := pe.PassedCount + pe.AdvisoryFailedCount + pe.MandatoryFailedCount + pe.ErroredCount
 	if pe.TotalCount != expectedTotal {
-		return fmt.Errorf("total count mismatch: expected %d, got %d", expectedTotal, pe.TotalCount)
+		return ErrCountMismatch
 	}
 
 	if pe.RequiresOverride != (pe.MandatoryFailedCount > 0) {
-		return fmt.Errorf("RequiresOverride mismatch with MandatoryFailedCount")
+		return ErrOverrideMismatch
 	}
 
 	return nil
@@ -66,15 +103,15 @@ type PolicyDetail struct {
 // Validate checks PolicyDetail data integrity
 func (pd *PolicyDetail) Validate() error {
 	if pd.PolicyName == "" {
-		return fmt.Errorf("policy name must not be empty")
+		return ErrEmptyPolicyName
 	}
 
-	if pd.EnforcementLevel != "mandatory" && pd.EnforcementLevel != "advisory" {
-		return fmt.Errorf("invalid enforcement level: %s", pd.EnforcementLevel)
+	if pd.EnforcementLevel != EnforcementMandatory && pd.EnforcementLevel != EnforcementAdvisory {
+		return ErrInvalidEnforcementLevel
 	}
 
-	if pd.Status != "failed" && pd.Status != "errored" {
-		return fmt.Errorf("invalid status: %s", pd.Status)
+	if pd.Status != PolicyStatusFailed && pd.Status != PolicyStatusErrored {
+		return ErrInvalidPolicyStatus
 	}
 
 	return nil
@@ -95,37 +132,42 @@ type PolicyOverride struct {
 // Validate checks PolicyOverride data integrity
 func (po *PolicyOverride) Validate() error {
 	if !validStringID(po.RunID) {
-		return fmt.Errorf("invalid run ID: %s", po.RunID)
+		return ErrInvalidRunID
 	}
 
 	if po.PolicyStageID == "" && po.PolicyCheckID == "" {
-		return fmt.Errorf("either PolicyStageID or PolicyCheckID must be set")
+		return ErrPolicyIDRequired
+	}
+
+	if po.PolicyStageID != "" && po.PolicyCheckID != "" {
+		return ErrPolicyIDMutualExclusive
+	}
+
+	if po.PolicyStageID != "" && !validStringID(po.PolicyStageID) {
+		return ErrInvalidPolicyStageID
+	}
+
+	if po.PolicyCheckID != "" && !validStringID(po.PolicyCheckID) {
+		return ErrInvalidPolicyCheckID
 	}
 
 	if po.Justification == "" {
-		return fmt.Errorf("justification is required")
+		return ErrInvalidJustification
 	}
 
-	if po.InitialStatus != "post_plan_awaiting_decision" {
-		return fmt.Errorf("invalid initial status: %s, expected post_plan_awaiting_decision", po.InitialStatus)
+	if po.InitialStatus != RunStatusPostPlanAwaitingDecision {
+		return ErrInvalidInitialStatus
 	}
 
-	validFinalStatuses := []string{
-		"policy_override",
-		"post_plan_completed",
-		"apply_queued",
-		"discarded",
-		"errored",
+	validFinalStatuses := map[string]bool{
+		RunStatusPolicyOverride:    true,
+		RunStatusPostPlanCompleted: true,
+		RunStatusApplyQueued:       true,
+		RunStatusDiscarded:         true,
+		RunStatusErrored:           true,
 	}
-	valid := false
-	for _, s := range validFinalStatuses {
-		if po.FinalStatus == s {
-			valid = true
-			break
-		}
-	}
-	if !valid {
-		return fmt.Errorf("invalid final status: %s", po.FinalStatus)
+	if !validFinalStatuses[po.FinalStatus] {
+		return ErrInvalidFinalStatus
 	}
 
 	return nil
@@ -159,6 +201,9 @@ func (o OverridePolicyOptions) Validate() error {
 	if o.Justification == "" {
 		return ErrInvalidJustification
 	}
+	if len(o.Justification) < MinJustificationLength {
+		return fmt.Errorf("%w: must be at least %d characters", ErrInvalidJustification, MinJustificationLength)
+	}
 	return nil
 }
 
@@ -167,5 +212,5 @@ func validStringID(id string) bool {
 	if id == "" {
 		return false
 	}
-	return regexp.MustCompile(`^[a-z]+-[a-zA-Z0-9]+$`).MatchString(id)
+	return validIDPattern.MatchString(id)
 }

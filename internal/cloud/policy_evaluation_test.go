@@ -80,9 +80,6 @@ func TestGetPolicyEvaluationOptions_Validate(t *testing.T) {
 // of mocking tfe.PolicyEvaluation struct. Integration tests should cover this.
 
 func TestPolicyService_GetPolicyEvaluation_InvalidRunID(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
 	ctx := context.Background()
 
 	m := &cloudMeta{

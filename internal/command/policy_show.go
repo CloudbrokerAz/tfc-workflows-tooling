@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/hashicorp/tfci/internal/cloud"
@@ -21,7 +22,7 @@ type PolicyShowCommand struct {
 
 func (c *PolicyShowCommand) flags() *flag.FlagSet {
 	f := c.flagSet("policy show")
-	f.StringVar(&c.RunID, "run-id", "", "HCP Terraform Run ID to check policies for.")
+	f.StringVar(&c.RunID, "run", "", "HCP Terraform Run ID to check policies for.")
 	f.BoolVar(&c.NoWait, "no-wait", false, "Fail immediately if policies not yet evaluated (default: wait with retry).")
 
 	return f
@@ -35,7 +36,7 @@ func (c *PolicyShowCommand) Run(args []string) int {
 	if c.RunID == "" {
 		c.addOutput("status", string(Error))
 		c.closeOutput()
-		c.writer.ErrorResult("checking policies requires a valid run ID (use --run-id)")
+		c.writer.ErrorResult("checking policies requires a valid run ID (use --run)")
 		return 1
 	}
 
@@ -76,9 +77,17 @@ func (c *PolicyShowCommand) addPolicyEvaluationDetails(eval *cloud.PolicyEvaluat
 
 	// Add failed policies if any
 	if len(eval.FailedPolicies) > 0 {
-		failedPoliciesJSON, _ := json.Marshal(eval.FailedPolicies)
-		c.addOutput("failed_policies", string(failedPoliciesJSON))
+		failedPoliciesJSON, err := json.Marshal(eval.FailedPolicies)
+		if err != nil {
+			log.Printf("[ERROR] Failed to marshal failed policies: %s", err)
+		} else {
+			c.addOutput("failed_policies", string(failedPoliciesJSON))
+		}
 	}
+
+	// Add run link to structured output
+	runLink := c.cloud.RunLinkByID(c.organization, eval.RunID)
+	c.addOutput("run_link", runLink)
 
 	// Add full payload for JSON output
 	c.addOutputWithOpts("payload", eval, &outputOpts{
@@ -114,8 +123,9 @@ func (c *PolicyShowCommand) addPolicyEvaluationDetails(eval *cloud.PolicyEvaluat
 			c.writer.Output("\n✅ All policies passed or only advisory policies failed")
 		}
 
-		// Add run link with simple construction
-		c.writer.Output(fmt.Sprintf("\n🔗 View in HCP Terraform: https://app.terraform.io/app/%s/runs/%s", c.organization, eval.RunID))
+		// Add run link
+		runLink := c.cloud.RunLinkByID(c.organization, eval.RunID)
+		c.writer.Output(fmt.Sprintf("\n   View in HCP Terraform: %s", runLink))
 		c.writer.Output("")
 	}
 }
@@ -137,7 +147,7 @@ Global Options:
 
 Options:
 
-	-run-id         HCP Terraform Run ID to check policies for (required).
+	-run            HCP Terraform Run ID to check policies for (required).
 
 	-no-wait        Fail immediately if policies not yet evaluated. Default behavior is to wait with retry until policies are evaluated.
 

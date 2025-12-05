@@ -52,15 +52,16 @@ func TestOverridePolicyOptions_Validate(t *testing.T) {
 				Justification: "",
 			},
 			expectError: true,
-			errorMsg:    "justification is required",
+			errorMsg:    "invalid justification",
 		},
 		{
-			name: "short justification now allowed",
+			name: "short justification rejected",
 			options: OverridePolicyOptions{
 				RunID:         "run-abc123",
 				Justification: "ok",
 			},
-			expectError: false,
+			expectError: true,
+			errorMsg:    "invalid justification: must be at least 10 characters",
 		},
 	}
 
@@ -274,7 +275,7 @@ func TestPolicyService_OverridePolicy_RunNotFound(t *testing.T) {
 
 	_, err := service.OverridePolicy(ctx, OverridePolicyOptions{
 		RunID:         runID,
-		Justification: "Test justification",
+		Justification: "Test justification for override",
 	})
 
 	if err == nil {

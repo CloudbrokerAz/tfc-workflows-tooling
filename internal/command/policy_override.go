@@ -20,7 +20,7 @@ type PolicyOverrideCommand struct {
 
 func (c *PolicyOverrideCommand) flags() *flag.FlagSet {
 	f := c.flagSet("policy override")
-	f.StringVar(&c.RunID, "run-id", "", "HCP Terraform Run ID to override policies for.")
+	f.StringVar(&c.RunID, "run", "", "HCP Terraform Run ID to override policies for.")
 	f.StringVar(&c.Justification, "justification", "", "Reason for override (minimum 10 characters).")
 
 	return f
@@ -35,7 +35,7 @@ func (c *PolicyOverrideCommand) Run(args []string) int {
 	if c.RunID == "" {
 		c.addOutput("status", string(Error))
 		c.closeOutput()
-		c.writer.ErrorResult("overriding policies requires a valid run ID (use --run-id)")
+		c.writer.ErrorResult("overriding policies requires a valid run ID (use --run)")
 		return 1
 	}
 
@@ -87,6 +87,10 @@ func (c *PolicyOverrideCommand) addPolicyOverrideDetails(override *cloud.PolicyO
 	c.addOutput("justification", override.Justification)
 	c.addOutput("timestamp", override.Timestamp.Format("2006-01-02T15:04:05Z07:00"))
 
+	// Add run link to structured output
+	runLink := c.cloud.RunLinkByID(c.organization, override.RunID)
+	c.addOutput("run_link", runLink)
+
 	// Add full payload for JSON output
 	c.addOutputWithOpts("payload", override, &outputOpts{
 		stdOut:      false,
@@ -117,8 +121,9 @@ func (c *PolicyOverrideCommand) addPolicyOverrideDetails(override *cloud.PolicyO
 			c.writer.Output("- Apply is already queued (workspace has auto-apply enabled)")
 		}
 
-		// Add run link with simple construction
-		c.writer.Output(fmt.Sprintf("- 🔗 View run: https://app.terraform.io/app/%s/runs/%s", c.organization, override.RunID))
+		// Add run link
+		runLink := c.cloud.RunLinkByID(c.organization, override.RunID)
+		c.writer.Output(fmt.Sprintf("-    View run: %s", runLink))
 		c.writer.Output("")
 	}
 }
@@ -144,7 +149,7 @@ Global Options:
 
 Options:
 
-	-run-id         HCP Terraform Run ID to override (required).
+	-run            HCP Terraform Run ID to override (required).
 	                Run must be in 'post_plan_awaiting_decision' status.
 
 	-justification  Reason for override (required, minimum 10 characters).
@@ -160,7 +165,7 @@ Exit Codes:
 Example:
 
 	tfci policy override \
-	  --run-id run-abc123def456 \
+	  --run run-abc123def456 \
 	  --justification "Emergency hotfix approved by CTO - Incident INC-12345"
 	`
 	return strings.TrimSpace(helpText)
