@@ -212,14 +212,46 @@ func (s *policyService) getPolicyFromTaskStages(ctx context.Context, run *tfe.Ru
 			result.ErroredCount += policyEval.ResultCount.Errored
 		}
 
-		// For failed mandatory policies, add basic info (policy eval doesn't have detailed policy names in SDK)
-		if policyEval.ResultCount != nil && policyEval.ResultCount.MandatoryFailed > 0 {
-			result.FailedPolicies = append(result.FailedPolicies, PolicyDetail{
-				PolicyName:       fmt.Sprintf("policy-eval-%s", policyEval.ID),
-				EnforcementLevel: EnforcementMandatory,
-				Status:           PolicyStatusFailed,
-				Description:      fmt.Sprintf("%d mandatory policies failed", policyEval.ResultCount.MandatoryFailed),
-			})
+		// Fetch detailed policy names for failed policies
+		if policyEval.ResultCount != nil &&
+			(policyEval.ResultCount.MandatoryFailed > 0 || policyEval.ResultCount.AdvisoryFailed > 0) {
+
+			log.Printf("[INFO] Fetching policy set outcomes for evaluation %s", policyEval.ID)
+
+			// Fetch policy set outcomes to get individual policy names
+			outcomes, err := s.tfe.PolicySetOutcomes.List(ctx, policyEval.ID, nil)
+
+			if err != nil {
+				log.Printf("[WARN] Failed to fetch policy set outcomes for %s: %s", policyEval.ID, err)
+				// Fall back to generic entry for mandatory failures
+				if policyEval.ResultCount.MandatoryFailed > 0 {
+					result.FailedPolicies = append(result.FailedPolicies, PolicyDetail{
+						PolicyName:       fmt.Sprintf("policy-eval-%s", policyEval.ID),
+						EnforcementLevel: EnforcementMandatory,
+						Status:           PolicyStatusFailed,
+						Description:      fmt.Sprintf("%d mandatory policies failed", policyEval.ResultCount.MandatoryFailed),
+					})
+				}
+				continue
+			}
+
+			// Extract individual policy names from outcomes
+			for _, policySetOutcome := range outcomes.Items {
+				log.Printf("[DEBUG] Processing policy set: %s with %d outcomes", policySetOutcome.PolicySetName, len(policySetOutcome.Outcomes))
+
+				for _, outcome := range policySetOutcome.Outcomes {
+					// Only include failed policies
+					if outcome.Status == "failed" {
+						result.FailedPolicies = append(result.FailedPolicies, PolicyDetail{
+							PolicyName:       outcome.PolicyName,
+							EnforcementLevel: string(outcome.EnforcementLevel),
+							Status:           outcome.Status,
+							Description:      outcome.Description,
+						})
+						log.Printf("[DEBUG] Added failed policy: %s (%s)", outcome.PolicyName, outcome.EnforcementLevel)
+					}
+				}
+			}
 		}
 	}
 
@@ -227,8 +259,8 @@ func (s *policyService) getPolicyFromTaskStages(ctx context.Context, run *tfe.Ru
 		result.MandatoryFailedCount + result.ErroredCount
 	result.RequiresOverride = result.MandatoryFailedCount > 0
 
-	log.Printf("[INFO] Policy evaluation retrieved: Total=%d, Passed=%d, Mandatory Failed=%d",
-		result.TotalCount, result.PassedCount, result.MandatoryFailedCount)
+	log.Printf("[INFO] Policy evaluation retrieved: Total=%d, Passed=%d, Mandatory Failed=%d, Detailed Policies=%d",
+		result.TotalCount, result.PassedCount, result.MandatoryFailedCount, len(result.FailedPolicies))
 
 	return result, nil
 }

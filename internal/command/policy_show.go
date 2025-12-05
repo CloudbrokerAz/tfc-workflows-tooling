@@ -119,12 +119,26 @@ func (c *PolicyShowCommand) addPolicyEvaluationDetails(eval *cloud.PolicyEvaluat
 			c.writer.Output("\n🚫 Failed Mandatory Policies:")
 			for _, policy := range eval.FailedPolicies {
 				if policy.EnforcementLevel == "mandatory" {
-					// Show description instead of generated policy ID
-					if policy.Description != "" {
-						c.writer.Output(fmt.Sprintf("   - %s", policy.Description))
-					} else {
-						c.writer.Output(fmt.Sprintf("   - %s policy failed", policy.EnforcementLevel))
+					// Display actual policy name with optional description
+					policyDisplay := policy.PolicyName
+					if policy.Description != "" && policy.Description != policy.PolicyName {
+						policyDisplay = fmt.Sprintf("%s - %s", policy.PolicyName, policy.Description)
 					}
+					c.writer.Output(fmt.Sprintf("   - %s", policyDisplay))
+				}
+			}
+		}
+
+		if eval.AdvisoryFailedCount > 0 {
+			c.writer.Output("\n⚠️  Failed Advisory Policies:")
+			for _, policy := range eval.FailedPolicies {
+				if policy.EnforcementLevel == "advisory" {
+					// Display actual policy name with optional description
+					policyDisplay := policy.PolicyName
+					if policy.Description != "" && policy.Description != policy.PolicyName {
+						policyDisplay = fmt.Sprintf("%s - %s", policy.PolicyName, policy.Description)
+					}
+					c.writer.Output(fmt.Sprintf("   - %s", policyDisplay))
 				}
 			}
 		}
