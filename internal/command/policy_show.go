@@ -94,12 +94,12 @@ func (c *PolicyShowCommand) addPolicyEvaluationDetails(eval *cloud.PolicyEvaluat
 			c.addOutput("failed_policies", string(failedPoliciesJSON))
 		}
 
-		// Add pre-formatted markdown for GitHub Actions
-		var markdownLines []string
+		// Add pre-formatted list for CI/CD systems (GitLab, Jenkins, GitHub Actions, etc.)
+		var policyLines []string
 		for _, policy := range eval.FailedPolicies {
-			markdownLines = append(markdownLines, fmt.Sprintf("- **%s** (%s)", policy.PolicyName, policy.EnforcementLevel))
+			policyLines = append(policyLines, fmt.Sprintf("- %s (%s)", policy.PolicyName, policy.EnforcementLevel))
 		}
-		c.addOutput("failed_policies_markdown", strings.Join(markdownLines, "\n"))
+		c.addOutput("failed_policies_list", strings.Join(policyLines, "\n"))
 	}
 
 	// Add run link to structured output
